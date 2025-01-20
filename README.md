@@ -14,7 +14,7 @@ This is a simple authentication system built using the Go programming language a
 To get started with this project, clone the repository:
 
 ```bash
-git clone https://github.com/akayasha/learn-go-auth
+git clone https://github.com/akayasha/auth-services
 ```
 
 ## Prerequisites
@@ -25,7 +25,7 @@ Make sure you have Go installed on your system. You can download it from [here](
 
 1. Navigate to your project directory:
    ```bash
-   cd learn-go-auth
+   cd auth-services
    ```
 
 2. Install the required dependencies:
@@ -54,12 +54,12 @@ Registers a new user.
 **Request Body:**
 ```json
 {
-    "firstName": "Firman",
-    "lastName": "Hariri",
+    "firstName": "firstname",
+    "lastName": "lastname",
     "nip" : "2781",
-    "username": "Akayas",
-    "email": "akayasha99@gmail.com",
-    "password": "Akayas12345!",
+    "username": "username",
+    "email": "email",
+    "password": "password!",
     "role": "user",
     "dob": "1996-04-24"
 }

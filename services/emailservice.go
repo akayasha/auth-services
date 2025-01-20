@@ -9,8 +9,8 @@ import (
 func SendOTPEmail(email, otp string) error {
 
 	//Set UP Email Sender
-	sender := "firman.hariri@idstar.co.id"
-	password := "Gintama26"
+	sender := "enter_your_email"
+	password := "enter_your_password"
 	host := "smtp.gmail.com"
 	port := "587"
 
