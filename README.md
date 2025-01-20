@@ -56,7 +56,6 @@ Registers a new user.
 {
     "firstName": "firstname",
     "lastName": "lastname",
-    "nip" : "2781",
     "username": "username",
     "email": "email",
     "password": "password!",

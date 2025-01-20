@@ -17,7 +17,6 @@ func RegisterUser(c *gin.Context) {
 		Email     string `json:"email" binding:"required"`
 		Password  string `json:"password" binding:"required"`
 		Role      string `json:"role"`
-		Nip       string `json:"nip" binding:"required"`
 		Dob       string `json:"dob" binding:"required"`
 	}
 
@@ -35,7 +34,7 @@ func RegisterUser(c *gin.Context) {
 		return
 	}
 
-	user, err := services.RegisterUser(registerData.Username, registerData.Email, registerData.Password, registerData.Role, registerData.FirstName, registerData.LastName, dob, registerData.Nip)
+	user, err := services.RegisterUser(registerData.Username, registerData.Email, registerData.Password, registerData.Role, registerData.FirstName, registerData.LastName, dob)
 	if err != nil {
 		utils.RespondError(c, 400, err.Error())
 		return

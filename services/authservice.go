@@ -12,7 +12,7 @@ import (
 var userRepo repository.UserRepository
 
 // RegisterUser registers a new user, including email verification and OTP
-func RegisterUser(username, email, password, role, firstName, lastName string, dob time.Time, nip string) (*models.User, error) {
+func RegisterUser(username, email, password, role, firstName, lastName string, dob time.Time) (*models.User, error) {
 
 	if userRepo == nil {
 		userRepo = repository.NewUserRepository(config.DB)
@@ -43,7 +43,6 @@ func RegisterUser(username, email, password, role, firstName, lastName string, d
 		Role:            models.Role(role),
 		OTP:             otp,
 		Dob:             dob,
-		Nip:             nip,
 		IsEmailVerified: false,
 	}
 
@@ -74,7 +73,7 @@ func LoginUser(email, password string) (map[string]interface{}, error) {
 	}
 
 	// Generate JWT token
-	token, err := utils.GenerateJWT(string(user.UUID), string(user.Nip), user.Role)
+	token, err := utils.GenerateJWT(string(user.UUID), user.Role)
 	if err != nil {
 		return nil, fmt.Errorf("error generating JWT: %v", err)
 	}

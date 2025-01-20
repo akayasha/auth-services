@@ -24,11 +24,10 @@ func CheckPasswordHash(password, hash string) bool {
 }
 
 // Generate JWT
-func GenerateJWT(uuid string, nip string, role models.Role) (string, error) {
+func GenerateJWT(uuid string, role models.Role) (string, error) {
 	claims := jwt.MapClaims{}
 	claims["user_id"] = uuid
 	claims["role"] = string(role)
-	claims["nip"] = nip
 	claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

@@ -15,7 +15,6 @@ type UserRepository interface {
 	FindByDob(dob time.Time) (*models.User, error)
 	UpdateUser(user *models.User) error
 	FindByName(name string) (*models.User, error)
-	FindByNip(name string) (*models.User, error)
 }
 
 type userRepository struct {
@@ -32,15 +31,6 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 // Create Users
 func (r *userRepository) CreateUser(users *models.User) error {
 	return r.db.Create(users).Error
-}
-
-// Find By Nip
-func (r *userRepository) FindByNip(nip string) (*models.User, error) {
-	var user models.User
-	if err := r.db.Where("nip = ?", nip).First(&user).Error; err != nil {
-		return nil, err
-	}
-	return &user, nil
 }
 
 // Find User By UUID

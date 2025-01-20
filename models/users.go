@@ -24,7 +24,6 @@ type User struct {
 	Role            Role      `gorm:"size:50;default:'user'"`
 	OTP             string    `gorm:"size:6"`
 	IsEmailVerified bool      `gorm:"default:false"`
-	Nip             string    `gorm:"size:255;not null"`
 	Dob             time.Time `gorm:"not null"`
 }
 
