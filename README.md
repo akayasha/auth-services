@@ -1,4 +1,4 @@
-# Learn Go Auth
+# GO services
 
 This is a simple authentication system built using the Go programming language and the Gin web framework. It allows users to register, log in, verify their email via OTP (One-Time Password), and resend OTPs when needed.
 
