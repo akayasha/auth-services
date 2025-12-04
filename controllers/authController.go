@@ -44,13 +44,16 @@ func RegisterUser(c *gin.Context) {
 }
 
 func ResendOTP(c *gin.Context) {
-	email := c.Query("email")
-	if email == "" {
+	var resendData struct {
+		Email string `json:"email" binding:"required"`
+	}
+
+	if err := c.BindJSON(&resendData); err != nil {
 		utils.RespondError(c, 400, "Email is required")
 		return
 	}
 
-	err := services.ResendOTP(email)
+	err := services.ResendOTP(resendData.Email)
 	if err != nil {
 		utils.RespondError(c, 400, err.Error())
 		return

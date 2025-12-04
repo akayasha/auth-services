@@ -14,6 +14,7 @@ func SetupRouter() *gin.Engine {
 		authRoutes.POST("/register", controllers.RegisterUser)
 		authRoutes.POST("/login", controllers.LoginUser)
 		authRoutes.POST("/verify-email", controllers.VerifyEmail)
+		authRoutes.POST("/resend-otp", controllers.ResendOTP)
 	}
 
 	return r

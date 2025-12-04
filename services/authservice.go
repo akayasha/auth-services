@@ -6,17 +6,22 @@ import (
 	"auth-services/repository"
 	"auth-services/utils"
 	"fmt"
+	"strings"
 	"time"
 )
 
 var userRepo repository.UserRepository
 
-// RegisterUser registers a new user, including email verification and OTP
-func RegisterUser(username, email, password, role, firstName, lastName string, dob time.Time) (*models.User, error) {
-
+// initUserRepo ensures the user repository is initialized
+func initUserRepo() {
 	if userRepo == nil {
 		userRepo = repository.NewUserRepository(config.DB)
 	}
+}
+
+// RegisterUser registers a new user, including email verification and OTP
+func RegisterUser(username, email, password, role, firstName, lastName string, dob time.Time) (*models.User, error) {
+	initUserRepo()
 
 	// Validate user data
 	userData := models.User{Username: username, Email: email, PasswordHash: password, Role: models.Role(role)}
@@ -48,6 +53,10 @@ func RegisterUser(username, email, password, role, firstName, lastName string, d
 
 	// Save user to the database
 	if err := userRepo.CreateUser(user); err != nil {
+		// Check if the error is a duplicate email constraint violation
+		if strings.Contains(err.Error(), "duplicate key") && strings.Contains(err.Error(), "idx_users_email") {
+			return nil, fmt.Errorf("email already registered")
+		}
 		return nil, fmt.Errorf("failed to create user: %v", err)
 	}
 
@@ -61,10 +70,17 @@ func RegisterUser(username, email, password, role, firstName, lastName string, d
 
 // LoginUser authenticates the user and returns a JWT token
 func LoginUser(email, password string) (map[string]interface{}, error) {
+	initUserRepo()
+
 	// Find user by email
 	user, err := userRepo.FindByEmail(email)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %v", err)
+	}
+
+	// Check if email is verified
+	if !user.IsEmailVerified {
+		return nil, fmt.Errorf("email not verified")
 	}
 
 	// Validate password
@@ -86,6 +102,8 @@ func LoginUser(email, password string) (map[string]interface{}, error) {
 
 // ResendOTP resends the OTP for email verification
 func ResendOTP(email string) error {
+	initUserRepo()
+
 	// Find user by email
 	user, err := userRepo.FindByEmail(email)
 	if err != nil {
@@ -111,6 +129,8 @@ func ResendOTP(email string) error {
 
 // SendVerificationOTP generates and sends an OTP for email verification
 func SendVerificationOTP(email string) error {
+	initUserRepo()
+
 	// Find user by email
 	user, err := userRepo.FindByEmail(email)
 	if err != nil {
@@ -136,6 +156,8 @@ func SendVerificationOTP(email string) error {
 
 // VerifyEmail verifies the OTP entered by the user
 func VerifyEmail(email, otp string) (string, error) {
+	initUserRepo()
+
 	// Find user by email
 	user, err := userRepo.FindByEmail(email)
 	if err != nil {

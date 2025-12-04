@@ -3,37 +3,45 @@ package services
 import (
 	"fmt"
 	"net/smtp"
+	"os"
 )
 
-// Send OTP on Email
 func SendOTPEmail(email, otp string) error {
 
-	//Set UP Email Sender
-	sender := "enter_your_email"
-	password := "enter_your_password"
-	host := "smtp.gmail.com"
-	port := "587"
+	username := getEnv("SMTP_USERNAME", "")
+	password := getEnv("SMTP_PASSWORD", "")
+	host := getEnv("SMTP_HOST", "smtp-relay.brevo.com")
+	port := getEnv("SMTP_PORT", "587")
 
-	//Set Up Receivent Email
+	from := getEnv("SMTP_FROM_EMAIL", "")
 	to := []string{email}
 
-	subject := "Email Verification OTP"
-	body := fmt.Sprint("Your OTP for email verification is: %s\"", otp)
+	subject := getEnv("EMAIL_SUBJECT", "Your OTP Code")
+	expiryMinutes := getEnv("OTP_EXPIRY_MINUTES", "5")
+	body := fmt.Sprintf("Your OTP verification code is: %s\nThis OTP expires in %s minutes.", otp, expiryMinutes)
 
-	// Set up the message
-	message := []byte("Subject: " + subject + "\r\n" +
-		"Content-Type: text/plain; charset=UTF-8\r\n\r\n" +
-		body)
+	message := []byte(
+		"From: " + from + "\r\n" +
+			"To: " + email + "\r\n" +
+			"Subject: " + subject + "\r\n" +
+			"MIME-Version: 1.0\r\n" +
+			"Content-Type: text/plain; charset=UTF-8\r\n\r\n" +
+			body)
 
-	// Authentication
-	auth := smtp.PlainAuth("", sender, password, host)
+	auth := smtp.PlainAuth("", username, password, host)
 
-	// Send email
-	err := smtp.SendMail(host+":"+port, auth, sender, to, message)
+	err := smtp.SendMail(host+":"+port, auth, from, to, message)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
 
+// getEnv retrieves the value of the environment variable or returns a default value
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }

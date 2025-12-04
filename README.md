@@ -43,7 +43,7 @@ To run the application locally:
 go run main.go
 ```
 
-This will start the Gin server, and you can access the application at http://localhost:8080.
+This will start the Gin server, and you can access the application at http://localhost:8081.
 
 ## API Endpoints
 

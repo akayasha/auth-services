@@ -4,9 +4,16 @@ import (
 	config "auth-services/config"
 	"auth-services/routes"
 	"log"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Println("⚠️ Warning: .env file not found, using default values")
+	}
+
 	// Initialize database connection
 	config.ConnectDatabase()
 
