@@ -10,8 +10,9 @@ import (
 type Role string
 
 const (
-	RoleAdmin Role = "admin"
-	RoleUser  Role = "user"
+	RoleAdmin    Role = "admin"
+	RoleUser     Role = "user"
+	RoleEmployee Role = "employee"
 )
 
 type User struct {
@@ -29,7 +30,7 @@ type User struct {
 
 func ValidateRole(role Role) error {
 	switch role {
-	case RoleAdmin, RoleUser:
+	case RoleAdmin, RoleUser, RoleEmployee:
 		return nil
 	default:
 		return errors.New("invalid role")
