@@ -4,8 +4,9 @@ import (
 	"auth-services/services"
 	"auth-services/utils"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 // RegisterUser handles user registration
@@ -14,27 +15,33 @@ func RegisterUser(c *gin.Context) {
 		FirstName string `json:"firstName" binding:"required"`
 		LastName  string `json:"lastName" binding:"required"`
 		Username  string `json:"username" binding:"required"`
-		Email     string `json:"email" binding:"required"`
+		Email     string `json:"email" binding:"required,email"`
 		Password  string `json:"password" binding:"required"`
 		Role      string `json:"role"`
 		Dob       string `json:"dob" binding:"required"`
 	}
 
-	if err := c.BindJSON(&registerData); err != nil {
+	if err := c.ShouldBindJSON(&registerData); err != nil {
+		fmt.Println("Register bind error:", err)
 		utils.RespondError(c, 400, "Invalid request data")
-		fmt.Errorf("error", err)
 		return
 	}
 
-	// Parse the date using the format "2006-01-02"
 	dob, err := time.Parse("2006-01-02", registerData.Dob)
 	if err != nil {
 		utils.RespondError(c, 400, "Invalid date format, use YYYY-MM-DD")
-		fmt.Println("Date parsing error:", err)
 		return
 	}
 
-	user, err := services.RegisterUser(registerData.Username, registerData.Email, registerData.Password, registerData.Role, registerData.FirstName, registerData.LastName, dob)
+	user, err := services.RegisterUser(
+		registerData.Username,
+		registerData.Email,
+		registerData.Password,
+		registerData.Role,
+		registerData.FirstName,
+		registerData.LastName,
+		dob,
+	)
 	if err != nil {
 		utils.RespondError(c, 400, err.Error())
 		return
@@ -43,18 +50,18 @@ func RegisterUser(c *gin.Context) {
 	utils.Respond(c, 201, "User registered successfully", user)
 }
 
+// Resend OTP
 func ResendOTP(c *gin.Context) {
 	var resendData struct {
-		Email string `json:"email" binding:"required"`
+		Email string `json:"email" binding:"required,email"`
 	}
 
-	if err := c.BindJSON(&resendData); err != nil {
+	if err := c.ShouldBindJSON(&resendData); err != nil {
 		utils.RespondError(c, 400, "Email is required")
 		return
 	}
 
-	err := services.ResendOTP(resendData.Email)
-	if err != nil {
+	if err := services.ResendOTP(resendData.Email); err != nil {
 		utils.RespondError(c, 400, err.Error())
 		return
 	}
@@ -62,15 +69,15 @@ func ResendOTP(c *gin.Context) {
 	utils.Respond(c, 200, "OTP resent successfully", nil)
 }
 
-// LoginUser handles user login
+// Login
 func LoginUser(c *gin.Context) {
 	var loginData struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required"`
 	}
 
-	if err := c.BindJSON(&loginData); err != nil {
-		utils.RespondError(c, 400, "Invalid request data")
+	if err := c.ShouldBindJSON(&loginData); err != nil {
+		utils.RespondError(c, 400, "Invalid login request")
 		return
 	}
 
@@ -83,14 +90,14 @@ func LoginUser(c *gin.Context) {
 	utils.Respond(c, 200, "Login successful", response)
 }
 
-// VerifyEmail handles email verification using OTP
+// Verify Email (OTP)
 func VerifyEmail(c *gin.Context) {
 	var verifyData struct {
-		Email string `json:"email"`
-		OTP   string `json:"otp"`
+		Email string `json:"email" binding:"required,email"`
+		OTP   string `json:"otp" binding:"required"`
 	}
 
-	if err := c.BindJSON(&verifyData); err != nil {
+	if err := c.ShouldBindJSON(&verifyData); err != nil {
 		utils.RespondError(c, 400, "Invalid request data")
 		return
 	}
@@ -102,4 +109,23 @@ func VerifyEmail(c *gin.Context) {
 	}
 
 	utils.Respond(c, 200, message, nil)
+}
+
+func RefreshToken(c *gin.Context) {
+	var req struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.RespondError(c, 400, "Refresh token required")
+		return
+	}
+
+	tokens, err := services.RefreshAccessToken(req.RefreshToken)
+	if err != nil {
+		utils.RespondError(c, 401, err.Error())
+		return
+	}
+
+	utils.Respond(c, 200, "Token refreshed", tokens)
 }

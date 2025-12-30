@@ -3,12 +3,13 @@ package utils
 import (
 	"auth-services/models"
 	"fmt"
-	"github.com/golang-jwt/jwt/v4"
-	"golang.org/x/crypto/bcrypt"
 	"math/rand"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/golang-jwt/jwt/v4"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Hashing Password
@@ -21,6 +22,14 @@ func HashPassword(password string) (string, error) {
 func CheckPasswordHash(password, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil
+}
+
+func HashOTP(otp string) (string, error) {
+	return HashPassword(otp)
+}
+
+func VerifyOTP(otp, hash string) bool {
+	return CheckPasswordHash(otp, hash)
 }
 
 // Generate JWT
@@ -56,4 +65,12 @@ func ValidateStruct(input interface{}, requiredFields ...string) string {
 		return fmt.Sprintf("Missing or empty fields: %v", strings.Join(missingFields, ", "))
 	}
 	return ""
+}
+
+func HashToken(token string) (string, error) {
+	return HashPassword(token)
+}
+
+func VerifyToken(token, hash string) bool {
+	return CheckPasswordHash(token, hash)
 }

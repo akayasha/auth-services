@@ -6,11 +6,13 @@ import (
 	"auth-services/repository"
 	"auth-services/utils"
 	"fmt"
-	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var userRepo repository.UserRepository
+var refreshRepo repository.RefreshTokenRepository
 
 // initUserRepo ensures the user repository is initialized
 func initUserRepo() {
@@ -19,51 +21,46 @@ func initUserRepo() {
 	}
 }
 
+func initRefreshRepo() {
+	if refreshRepo == nil {
+		refreshRepo = repository.NewRefreshTokenRepository(config.DB)
+	}
+}
+
 // RegisterUser registers a new user, including email verification and OTP
 func RegisterUser(username, email, password, role, firstName, lastName string, dob time.Time) (*models.User, error) {
 	initUserRepo()
 
-	// Validate user data
-	userData := models.User{Username: username, Email: email, PasswordHash: password, Role: models.Role(role)}
-	if validationErr := utils.ValidateStruct(userData, "Username", "Email", "PasswordHash"); validationErr != "" {
-		return nil, fmt.Errorf(validationErr)
+	if err := models.ValidateRole(models.Role(role)); err != nil {
+		return nil, err
 	}
 
-	// Hash password
 	hashedPassword, err := utils.HashPassword(password)
 	if err != nil {
 		return nil, err
 	}
 
-	// Generate OTP for email verification
 	otp := utils.GenerateOTP()
+	otpHash, _ := utils.HashOTP(otp)
+	exp := time.Now().Add(5 * time.Minute)
 
-	// Create user object
 	user := &models.User{
-		Username:        username,
-		FirstName:       firstName,
-		LastName:        lastName,
-		Email:           email,
-		PasswordHash:    hashedPassword,
-		Role:            models.Role(role),
-		OTP:             otp,
-		Dob:             dob,
-		IsEmailVerified: false,
+		Username:     username,
+		FirstName:    firstName,
+		LastName:     lastName,
+		Email:        email,
+		PasswordHash: hashedPassword,
+		Role:         models.Role(role),
+		OTPHash:      otpHash,
+		OTPExpiresAt: &exp,
+		Dob:          dob,
 	}
 
-	// Save user to the database
 	if err := userRepo.CreateUser(user); err != nil {
-		// Check if the error is a duplicate email constraint violation
-		if strings.Contains(err.Error(), "duplicate key") && strings.Contains(err.Error(), "idx_users_email") {
-			return nil, fmt.Errorf("email already registered")
-		}
-		return nil, fmt.Errorf("failed to create user: %v", err)
+		return nil, fmt.Errorf("email already registered")
 	}
 
-	// Send OTP email for verification
-	if err := SendOTPEmail(email, otp); err != nil {
-		return nil, fmt.Errorf("failed to send OTP email: %v", err)
-	}
+	_ = SendOTPEmail(email, otp)
 
 	return user, nil
 }
@@ -71,32 +68,53 @@ func RegisterUser(username, email, password, role, firstName, lastName string, d
 // LoginUser authenticates the user and returns a JWT token
 func LoginUser(email, password string) (map[string]interface{}, error) {
 	initUserRepo()
+	initRefreshRepo()
 
-	// Find user by email
 	user, err := userRepo.FindByEmail(email)
 	if err != nil {
-		return nil, fmt.Errorf("user not found: %v", err)
+		return nil, fmt.Errorf("invalid credentials")
 	}
 
-	// Check if email is verified
+	if user.LockedUntil != nil && user.LockedUntil.After(time.Now()) {
+		return nil, fmt.Errorf("account locked")
+	}
+
+	if !utils.CheckPasswordHash(password, user.PasswordHash) {
+		user.FailedLoginCount++
+
+		if user.FailedLoginCount >= 5 {
+			lock := time.Now().Add(15 * time.Minute)
+			user.LockedUntil = &lock
+		}
+
+		_ = userRepo.UpdateUser(user)
+		return nil, fmt.Errorf("invalid credentials")
+	}
+
 	if !user.IsEmailVerified {
 		return nil, fmt.Errorf("email not verified")
 	}
 
-	// Validate password
-	if !utils.CheckPasswordHash(password, user.PasswordHash) {
-		return nil, fmt.Errorf("invalid credentials")
+	// Reset counters
+	user.FailedLoginCount = 0
+	user.LockedUntil = nil
+	_ = userRepo.UpdateUser(user)
+
+	// 🔐 Revoke old refresh tokens
+	_ = refreshRepo.RevokeByUserUUID(user.UUID)
+
+	// 🔐 Issue new tokens
+	tokens, err := GenerateAuthTokens(user)
+	if err != nil {
+		return nil, err
 	}
 
-	// Generate JWT token
-	token, err := utils.GenerateJWT(string(user.UUID), user.Role)
-	if err != nil {
-		return nil, fmt.Errorf("error generating JWT: %v", err)
-	}
+	// 🧾 Audit log
+	LogAuthEvent(&user.UUID, "LOGIN_SUCCESS")
 
 	return map[string]interface{}{
-		"token": token,
-		"role":  user.Role,
+		"access_token":  tokens["access_token"],
+		"refresh_token": tokens["refresh_token"],
 	}, nil
 }
 
@@ -104,79 +122,151 @@ func LoginUser(email, password string) (map[string]interface{}, error) {
 func ResendOTP(email string) error {
 	initUserRepo()
 
-	// Find user by email
 	user, err := userRepo.FindByEmail(email)
 	if err != nil {
-		return fmt.Errorf("user not found: %v", err)
+		return nil // silent
 	}
 
-	// Generate new OTP
+	if user.OTPExpiresAt != nil && time.Until(*user.OTPExpiresAt) > 2*time.Minute {
+		return fmt.Errorf("wait before requesting new OTP")
+	}
+
 	otp := utils.GenerateOTP()
-	user.OTP = otp
+	hash, _ := utils.HashOTP(otp)
+	exp := time.Now().Add(5 * time.Minute)
 
-	// Save OTP to the database
-	if err := userRepo.UpdateUser(user); err != nil {
-		return fmt.Errorf("failed to update OTP: %v", err)
-	}
+	user.OTPHash = hash
+	user.OTPExpiresAt = &exp
 
-	// Send OTP email
-	if err := SendOTPEmail(user.Email, otp); err != nil {
-		return fmt.Errorf("failed to send OTP email: %v", err)
-	}
-
-	return nil
-}
-
-// SendVerificationOTP generates and sends an OTP for email verification
-func SendVerificationOTP(email string) error {
-	initUserRepo()
-
-	// Find user by email
-	user, err := userRepo.FindByEmail(email)
-	if err != nil {
-		return fmt.Errorf("user not found: %v", err)
-	}
-
-	// Generate OTP
-	otp := utils.GenerateOTP()
-	user.OTP = otp
-
-	// Save OTP to DB
-	if err := userRepo.UpdateUser(user); err != nil {
-		return fmt.Errorf("error saving OTP: %v", err)
-	}
-
-	// Send OTP to user email
-	if err := SendOTPEmail(user.Email, otp); err != nil {
-		return fmt.Errorf("error sending OTP: %v", err)
-	}
-
-	return nil
+	_ = userRepo.UpdateUser(user)
+	return SendOTPEmail(email, otp)
 }
 
 // VerifyEmail verifies the OTP entered by the user
 func VerifyEmail(email, otp string) (string, error) {
 	initUserRepo()
 
-	// Find user by email
 	user, err := userRepo.FindByEmail(email)
 	if err != nil {
-		return "", fmt.Errorf("user not found: %v", err)
-	}
-
-	// Check if the OTP matches
-	if user.OTP != otp {
 		return "", fmt.Errorf("invalid OTP")
 	}
 
-	// Mark email as verified
-	user.IsEmailVerified = true
-	user.OTP = "" // Clear OTP
-
-	// Update user in the database
-	if err := userRepo.UpdateUser(user); err != nil {
-		return "", fmt.Errorf("error updating email verification status: %v", err)
+	if user.LockedUntil != nil && user.LockedUntil.After(time.Now()) {
+		return "", fmt.Errorf("account locked")
 	}
 
-	return "Email verified successfully", nil
+	if user.OTPExpiresAt == nil || time.Now().After(*user.OTPExpiresAt) {
+		return "", fmt.Errorf("OTP expired")
+	}
+
+	if !utils.VerifyOTP(otp, user.OTPHash) {
+		user.FailedOTPCount++
+
+		if user.FailedOTPCount >= 3 {
+			lock := time.Now().Add(10 * time.Minute)
+			user.LockedUntil = &lock
+		}
+
+		_ = userRepo.UpdateUser(user)
+		return "", fmt.Errorf("invalid OTP")
+	}
+
+	user.IsEmailVerified = true
+	user.OTPHash = ""
+	user.OTPExpiresAt = nil
+	user.FailedOTPCount = 0
+	user.LockedUntil = nil
+
+	_ = userRepo.UpdateUser(user)
+
+	return "email verified", nil
+}
+
+func GenerateAuthTokens(user *models.User) (map[string]string, error) {
+	initRefreshRepo()
+
+	accessToken, err := utils.GenerateJWT(user.UUID, user.Role)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshPlain := uuid.New().String()
+	refreshHash, _ := utils.HashToken(refreshPlain)
+
+	rt := &models.RefreshToken{
+		UserUUID:  user.UUID,
+		TokenHash: refreshHash,
+		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
+	}
+
+	_ = refreshRepo.Create(rt)
+
+	return map[string]string{
+		"access_token":  accessToken,
+		"refresh_token": refreshPlain,
+	}, nil
+}
+
+func RefreshAccessToken(refreshToken string) (map[string]string, error) {
+	initRefreshRepo()
+	initUserRepo()
+
+	hash, err := utils.HashToken(refreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// ✅ CHECK REDIS BLACKLIST FIRST
+	if blacklisted, _ := IsRefreshTokenBlacklisted(hash); blacklisted {
+		return nil, fmt.Errorf("refresh token revoked")
+	}
+
+	rt, err := refreshRepo.FindValidByHash(hash)
+	if err != nil {
+		return nil, fmt.Errorf("invalid refresh token")
+	}
+
+	user, err := userRepo.FindByUUID(rt.UserUUID)
+	if err != nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	// 🔐 BLACKLIST OLD TOKEN
+	_ = BlacklistRefreshToken(hash, rt.ExpiresAt)
+
+	// 🔐 REVOKE DB TOKEN
+	_ = refreshRepo.Revoke(rt.ID)
+
+	// 🔐 ISSUE NEW TOKENS
+	tokens, err := GenerateAuthTokens(user)
+	if err != nil {
+		return nil, err
+	}
+
+	// 🧾 AUDIT
+	LogAuthEvent(&user.UUID, "TOKEN_REFRESH")
+
+	return tokens, nil
+}
+
+func Logout(refreshToken string) error {
+	initRefreshRepo()
+
+	hash, err := utils.HashToken(refreshToken)
+	if err != nil {
+		return nil
+	}
+
+	rt, err := refreshRepo.FindValidByHash(hash)
+	if err != nil {
+		return nil
+	}
+
+	// 🔐 Blacklist in Redis
+	_ = BlacklistRefreshToken(hash, rt.ExpiresAt)
+
+	// 🔐 Revoke in DB
+	_ = refreshRepo.Revoke(rt.ID)
+
+	return nil
 }

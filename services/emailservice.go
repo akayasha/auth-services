@@ -1,47 +1,83 @@
 package services
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
-	"net/smtp"
+	"net/http"
 	"os"
+	"time"
 )
 
+type brevoEmailRequest struct {
+	Sender struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+	} `json:"sender"`
+	To []struct {
+		Email string `json:"email"`
+	} `json:"to"`
+	Subject     string `json:"subject"`
+	TextContent string `json:"textContent"`
+}
+
 func SendOTPEmail(email, otp string) error {
+	apiKey := getEnv("BREVO_API_KEY", "")
+	if apiKey == "" {
+		return fmt.Errorf("BREVO_API_KEY missing")
+	}
 
-	username := getEnv("SMTP_USERNAME", "")
-	password := getEnv("SMTP_PASSWORD", "")
-	host := getEnv("SMTP_HOST", "smtp-relay.brevo.com")
-	port := getEnv("SMTP_PORT", "587")
-
-	from := getEnv("SMTP_FROM_EMAIL", "")
-	to := []string{email}
-
+	senderEmail := getEnv("BREVO_SENDER_EMAIL", "")
+	senderName := getEnv("BREVO_SENDER_NAME", "BloomBudy")
 	subject := getEnv("EMAIL_SUBJECT", "Your OTP Code")
-	expiryMinutes := getEnv("OTP_EXPIRY_MINUTES", "5")
-	body := fmt.Sprintf("Your OTP verification code is: %s\nThis OTP expires in %s minutes.", otp, expiryMinutes)
+	expiry := getEnv("OTP_EXPIRY_MINUTES", "5")
 
-	message := []byte(
-		"From: " + from + "\r\n" +
-			"To: " + email + "\r\n" +
-			"Subject: " + subject + "\r\n" +
-			"MIME-Version: 1.0\r\n" +
-			"Content-Type: text/plain; charset=UTF-8\r\n\r\n" +
-			body)
+	bodyText := fmt.Sprintf(
+		"Your OTP verification code is: %s\n\nThis OTP expires in %s minutes.",
+		otp,
+		expiry,
+	)
 
-	auth := smtp.PlainAuth("", username, password, host)
+	reqBody := brevoEmailRequest{}
+	reqBody.Sender.Email = senderEmail
+	reqBody.Sender.Name = senderName
+	reqBody.Subject = subject
+	reqBody.TextContent = bodyText
+	reqBody.To = append(reqBody.To, struct {
+		Email string `json:"email"`
+	}{Email: email})
 
-	err := smtp.SendMail(host+":"+port, auth, from, to, message)
+	jsonBody, _ := json.Marshal(reqBody)
+
+	req, err := http.NewRequest(
+		"POST",
+		"https://api.brevo.com/v3/smtp/email",
+		bytes.NewBuffer(jsonBody),
+	)
 	if err != nil {
 		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("api-key", apiKey)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("brevo send failed, status: %s", resp.Status)
 	}
 
 	return nil
 }
 
-// getEnv retrieves the value of the environment variable or returns a default value
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+func getEnv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
-	return defaultValue
+	return def
 }

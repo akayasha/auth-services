@@ -2,23 +2,32 @@ package repository
 
 import (
 	"auth-services/models"
-	"gorm.io/gorm"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type UserRepository interface {
 	CreateUser(users *models.User) error
-	findByuuid(uu string) (*models.User, error)
 	FindByUsername(username string) (*models.User, error)
 	FindByEmail(email string) (*models.User, error)
 	FindByRole(role string) (*models.User, error)
 	FindByDob(dob time.Time) (*models.User, error)
 	UpdateUser(user *models.User) error
 	FindByName(name string) (*models.User, error)
+	FindByUUID(uuid string) (*models.User, error)
 }
 
 type userRepository struct {
 	db *gorm.DB
+}
+
+func (r *userRepository) FindByUUID(uuid string) (*models.User, error) {
+	var user models.User
+	if err := r.db.Where("uuid = ?", uuid).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 func NewUserRepository(db *gorm.DB) UserRepository {
@@ -31,15 +40,6 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 // Create Users
 func (r *userRepository) CreateUser(users *models.User) error {
 	return r.db.Create(users).Error
-}
-
-// Find User By UUID
-func (r *userRepository) findByuuid(uu string) (*models.User, error) {
-	var user models.User
-	if err := r.db.Where("uuid = ?", uu).First(&user).Error; err != nil {
-		return nil, err
-	}
-	return &user, nil
 }
 
 // Find User By Username

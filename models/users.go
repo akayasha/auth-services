@@ -2,9 +2,10 @@ package models
 
 import (
 	"errors"
+	"time"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"time"
 )
 
 type Role string
@@ -16,16 +17,36 @@ const (
 )
 
 type User struct {
-	UUID            string    `gorm:"type:char(36);primaryKey"`
-	FirstName       string    `gorm:"type:varchar(255);not null"`
-	LastName        string    `gorm:"type:varchar(255);not null"`
-	Username        string    `gorm:"size:255;not null"`
-	Email           string    `gorm:"type:varchar(255);uniqueIndex;not null"`
-	PasswordHash    string    `gorm:"not null"`
-	Role            Role      `gorm:"size:50;default:'user'"`
-	OTP             string    `gorm:"size:6"`
-	IsEmailVerified bool      `gorm:"default:false"`
-	Dob             time.Time `gorm:"not null"`
+	UUID string `gorm:"type:char(36);primaryKey" json:"uuid"`
+
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	Username  string `gorm:"uniqueIndex" json:"username"`
+	Email     string `gorm:"uniqueIndex" json:"email"`
+
+	PasswordHash string `json:"-"` // Hide from JSON
+	Role         Role   `json:"role"`
+
+	OTPHash      string     `json:"-"` // Hide from JSON
+	OTPExpiresAt *time.Time `json:"-"` // Hide from JSON
+
+	IsEmailVerified bool `json:"isEmailVerified"`
+
+	FailedLoginCount int        `json:"-"` // Hide from JSON
+	FailedOTPCount   int        `json:"-"` // Hide from JSON
+	LockedUntil      *time.Time `json:"-"` // Hide from JSON
+
+	Dob       time.Time `json:"dob"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// BeforeCreate hook to generate UUID
+func (u *User) BeforeCreate(tx *gorm.DB) error {
+	if u.UUID == "" {
+		u.UUID = uuid.New().String()
+	}
+	return nil
 }
 
 func ValidateRole(role Role) error {
@@ -35,10 +56,4 @@ func ValidateRole(role Role) error {
 	default:
 		return errors.New("invalid role")
 	}
-}
-
-// BeforeCreate hook to set UUID before saving to the database
-func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
-	u.UUID = uuid.New().String()
-	return
 }
